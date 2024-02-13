@@ -142,7 +142,6 @@ func getProjectEndpoint(projectId string) (string, error) {
 	}
 	for _, endpoint := range endpoints {
 		if strings.Contains(endpoint.Name, projectId) {
-			fmt.Println(endpoint.Id)
 			return endpoint.Id, nil
 		}
 	}
@@ -477,6 +476,8 @@ func deployProject(networkVolumeId string) (endpointId string, err error) {
 	//check for existing pod
 	projectPodId, err := getProjectPod(projectId)
 	if projectPodId == "" || err != nil {
+		//try to get cpu instance
+		//TODO: attempt to get cpu instance, if that fails continue to try to get a normal pod
 		//or try to get pod with one of gpu types
 		projectPodId, err = launchDevPod(config, networkVolumeId)
 		if err != nil {
@@ -573,6 +574,22 @@ func deployProject(networkVolumeId string) (endpointId string, err error) {
 		err = api.UpdateEndpointTemplate(deployedEndpointId, projectEndpointTemplateId)
 		if err != nil {
 			fmt.Println("error updating endpoint template")
+			return "", err
+		}
+		_, err = api.UpdateEndpoint(&api.UpdateEndpointInput{
+			Id:              deployedEndpointId,
+			Name:            fmt.Sprintf("%s-endpoint-%s%s", projectName, projectId, flashbootSuffix),
+			TemplateId:      projectEndpointTemplateId,
+			NetworkVolumeId: networkVolumeId,
+			GpuIds:          "AMPERE_16",
+			IdleTimeout:     idleTimeout,
+			ScalerType:      "QUEUE_DELAY",
+			ScalerValue:     4,
+			WorkersMin:      minWorkers,
+			WorkersMax:      maxWorkers,
+		})
+		if err != nil {
+			fmt.Println("error updating endpoint")
 			return "", err
 		}
 	}

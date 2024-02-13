@@ -33,6 +33,19 @@ type CreateEndpointInput struct {
 	WorkersMin      int    `json:"workersMin"`
 	WorkersMax      int    `json:"workersMax"`
 }
+type UpdateEndpointInput struct {
+	Name            string `json:"name"`
+	Id              string `json:"id"`
+	TemplateId      string `json:"templateId"`
+	GpuIds          string `json:"gpuIds"`
+	NetworkVolumeId string `json:"networkVolumeId"`
+	Locations       string `json:"locations"`
+	IdleTimeout     int    `json:"idleTimeout"`
+	ScalerType      string `json:"scalerType"`
+	ScalerValue     int    `json:"scalerValue"`
+	WorkersMin      int    `json:"workersMin"`
+	WorkersMax      int    `json:"workersMax"`
+}
 
 // there are many more fields in the result of the query but I just care about these for CLI port
 type Endpoint struct {
@@ -120,6 +133,65 @@ func CreateTemplate(templateInput *CreateTemplateInput) (templateId string, err 
 }
 
 func CreateEndpoint(endpointInput *CreateEndpointInput) (endpointId string, err error) {
+	input := Input{
+		Query: `
+		mutation saveEndpoint($input: EndpointInput!) {
+			saveEndpoint(input: $input) {
+			  gpuIds
+			  id
+			  idleTimeout
+			  locations
+			  name
+			  networkVolumeId
+			  scalerType
+			  scalerValue
+			  templateId
+			  userId
+			  workersMax
+			  workersMin
+			}
+		  }
+		`,
+		Variables: map[string]interface{}{"input": endpointInput},
+	}
+	res, err := Query(input)
+	if err != nil {
+		return
+	}
+	defer res.Body.Close()
+	rawData, err := io.ReadAll(res.Body)
+	if err != nil {
+		return
+	}
+	if res.StatusCode != 200 {
+		err = fmt.Errorf("statuscode %d: %s", res.StatusCode, string(rawData))
+		return
+	}
+	data := make(map[string]interface{})
+	if err = json.Unmarshal(rawData, &data); err != nil {
+		return
+	}
+	gqlErrors, ok := data["errors"].([]interface{})
+	if ok && len(gqlErrors) > 0 {
+		firstErr, _ := gqlErrors[0].(map[string]interface{})
+		err = errors.New(firstErr["message"].(string))
+		return
+	}
+	gqldata, ok := data["data"].(map[string]interface{})
+	if !ok || gqldata == nil {
+		err = fmt.Errorf("data is nil: %s", string(rawData))
+		return
+	}
+	endpoint, ok := gqldata["saveEndpoint"].(map[string]interface{})
+	if !ok || endpoint == nil {
+		err = fmt.Errorf("endpoint is nil: %s", string(rawData))
+		return
+	}
+	endpointId = endpoint["id"].(string)
+	return
+}
+
+func UpdateEndpoint(endpointInput *UpdateEndpointInput) (endpointId string, err error) {
 	input := Input{
 		Query: `
 		mutation saveEndpoint($input: EndpointInput!) {
