@@ -8,11 +8,13 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/fatih/color"
+	ignore "github.com/sabhiram/go-gitignore"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -71,14 +73,8 @@ func (sshConn *SSHConnection) getSshOptions() []string {
 func (sshConn *SSHConnection) Rsync(localDir string, remoteDir string, quiet bool) error {
 	rsyncCmdArgs := []string{"-avz", "--no-owner", "--no-group"}
 
-	// Retrieve and apply ignore patterns
-	patterns, err := GetIgnoreList()
-	if err != nil {
-		return fmt.Errorf("getting ignore list: %w", err)
-	}
-	for _, pat := range patterns {
-		rsyncCmdArgs = append(rsyncCmdArgs, "--exclude", pat)
-	}
+	//TODO this understands glob syntax and not gitignore syntax
+	rsyncCmdArgs = append(rsyncCmdArgs, "--exclude-from", ".runpodignore")
 
 	// Add quiet flag if requested
 	if quiet {
@@ -95,6 +91,32 @@ func (sshConn *SSHConnection) Rsync(localDir string, remoteDir string, quiet boo
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("executing rsync command: %w", err)
+	}
+
+	return nil
+}
+func (sshConn *SSHConnection) RsyncFileList(localDir string, remoteDir string, quiet bool, files []string) error {
+	rsyncCmdArgs := []string{"-avz", "--no-owner", "--no-group"}
+
+	// Add quiet flag if requested
+	if quiet {
+		rsyncCmdArgs = append(rsyncCmdArgs, "--quiet")
+	}
+
+	// Prepare SSH options for rsync
+	sshOptions := fmt.Sprintf("ssh %s", strings.Join(sshConn.getSshOptions(), " "))
+	for _, file := range files {
+		relativeLocalPath, _ := filepath.Rel(localDir, file)
+		relativeLocalDir := filepath.Dir(relativeLocalPath)
+		remoteDirForFile := path.Join(remoteDir, relativeLocalDir)
+		rsyncCmdArgs = append(rsyncCmdArgs, "-e", sshOptions, file, fmt.Sprintf("root@%s:%s", sshConn.podIp, remoteDirForFile))
+		cmd := exec.Command("rsync", rsyncCmdArgs...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+		if err := cmd.Run(); err != nil {
+			fmt.Println("executing rsync command: %w", err)
+		}
 	}
 
 	return nil
@@ -131,25 +153,88 @@ func hasChanges(localDir string, lastSyncTime time.Time) (bool, string) {
 	return firstModifiedFile != "", firstModifiedFile
 }
 
+func getModifiedFiles(localDir string, lastSyncTime time.Time) (modifiedFiles []string) {
+	err := filepath.Walk(localDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			if os.IsNotExist(err) {
+				// Handle the case where a file has been removed
+				fmt.Printf("Detected a removed file at: %s\n", path)
+				return errors.New("change detected") // Stop walking
+			}
+			return err
+		}
+
+		// Check if the file was modified after the last sync time
+		if info.ModTime().After(lastSyncTime) {
+			modifiedFiles = append(modifiedFiles, path)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		fmt.Printf("Error walking through directory: %v\n", err)
+		return []string{}
+	}
+	return
+}
+func filterNonignoredFiles(gitignore *ignore.GitIgnore, files []string) (nonignoredFiles []string) {
+	for _, filename := range files {
+		if !gitignore.MatchesPath(filename) {
+			nonignoredFiles = append(nonignoredFiles, filename)
+		}
+	}
+	return
+}
+
+func elapsedTimeLogger(namespace string) func(string) {
+	start := time.Now().UnixNano()
+	return func(msg string) {
+		now := time.Now().UnixNano()
+		fmt.Println(fmt.Sprintf("%s: %s took %d millis", namespace, msg, (now-start)/1000000))
+		start = now
+	}
+}
+
 func (sshConn *SSHConnection) SyncDir(localDir string, remoteDir string) {
-	syncFiles := func() {
+	syncFiles := func(filesToSync []string) {
 		fmt.Println("Syncing files...")
-		err := sshConn.Rsync(localDir, remoteDir, true)
+		logElapsedTime := elapsedTimeLogger("syncFiles")
+		var err error
+		if len(filesToSync) < 5 {
+			//sync only desired files
+			err = sshConn.RsyncFileList(localDir, remoteDir, true, filesToSync)
+		}
+		logElapsedTime("just a few files")
+		//sync entire directory
+		err = sshConn.Rsync(localDir, filepath.Dir(remoteDir), true)
+		logElapsedTime("entire directory")
 		if err != nil {
 			fmt.Printf(" error: %v\n", err)
 			return
 		}
+		fmt.Println("Done syncing")
 	}
 
+	ignoreFilePresent := true
+	ignorer, err := ignore.CompileIgnoreFile(".runpodignore")
+	if err != nil {
+		ignoreFilePresent = false
+	}
 	// Start listening for events in a separate goroutine.
 	go func() {
 		lastSyncTime := time.Now()
 		for {
 			time.Sleep(100 * time.Millisecond)
-			hasChanged, firstModifiedFile := hasChanges(localDir, lastSyncTime)
+			filesToSync := getModifiedFiles(localDir, lastSyncTime)
+			if ignoreFilePresent {
+				filesToSync = filterNonignoredFiles(ignorer, filesToSync)
+			}
+			hasChanged := len(filesToSync) > 0
 			if hasChanged {
+				firstModifiedFile := filesToSync[0]
 				fmt.Printf("Found changes in %s\n", firstModifiedFile)
-				syncFiles()
+				syncFiles(filesToSync)
 				lastSyncTime = time.Now()
 			}
 		}
