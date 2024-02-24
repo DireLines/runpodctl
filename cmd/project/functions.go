@@ -177,11 +177,7 @@ func attemptPodLaunch(config *toml.Tree, networkVolumeId string, environmentVari
 		}
 		pod, err := api.CreatePod(&input)
 		if err != nil {
-			if !strings.Contains(err.Error(), "There are no longer any instances available with the requested specifications.") {
-				fmt.Println(err)
-			} else {
-				fmt.Println("Unavailable.")
-			}
+			fmt.Println(err)
 			continue
 		}
 		fmt.Println("Success!")
