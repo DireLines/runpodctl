@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.15.2](https://github.com/DireLines/runpodctl/compare/v1.15.1...v1.15.2) (2024-02-29)
+
+
+### Bug Fixes
+
+* brew action needs permissions ([70f4dce](https://github.com/DireLines/runpodctl/commit/70f4dce78851719ce89a0a7221e99d0dccb285bf))
+* reinstate release-please and do brew action after ([062e881](https://github.com/DireLines/runpodctl/commit/062e881c83e1c52b2e1498043c890bed715bef8d))
+
 ## [1.14.1](https://github.com/runpod/runpodctl/compare/v1.14.0...v1.14.1) (2024-02-22)
 
 
