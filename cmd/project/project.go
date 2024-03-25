@@ -22,6 +22,7 @@ var (
 	setDefaultNetworkVolume bool
 	includeEnvInDockerfile  bool
 	showPrefixInPodLogs     bool
+	deployViaDockerImage    bool
 )
 
 const inputPromptPrefix string = "   > "
@@ -347,4 +348,6 @@ func init() {
 
 	StartProjectCmd.Flags().BoolVar(&showPrefixInPodLogs, "prefix-pod-logs", true, "Include the Pod ID as a prefix in log messages from the project Pod.")
 	BuildProjectCmd.Flags().BoolVar(&includeEnvInDockerfile, "include-env", false, "Incorporate environment variables defined in runpod.toml into the generated Dockerfile.")
+
+	DeployProjectCmd.Flags().BoolVar(&deployViaDockerImage, "docker", false, "Create a standalone docker image for the project deployment")
 }

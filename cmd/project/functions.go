@@ -507,7 +507,35 @@ func startProject(networkVolumeId string) error {
 	return nil
 }
 
+// runpodctl project deploy --docker
+func deployProjectViaDocker(networkVolumeId string) (endpointId string, err error) {
+	//parse project toml
+	config := loadProjectConfig()
+	projectId := config.GetPath([]string{"project", "uuid"}).(string)
+	projectName := config.Get("name").(string)
+	// generate dockerfile
+	buildProjectDockerfile()
+	// start runpod cpu pod to perform docker build
+
+	// upload dockerfile to worker
+
+	// on worker
+	// retrieve dockerhub creds
+
+	// 	generate image tag
+	imageTag := fmt.Sprintf("%s:%s-%s/%s", dockerUsername, projectName, projectId, tag)
+	// 	docker build
+	// 	upload to dockerhub
+	// on cli
+	// 	await worker build
+	// 	deploy endpoint with new tag
+	//check for existing pod
+}
+
 func deployProject(networkVolumeId string) (endpointId string, err error) {
+	if deployViaDockerImage {
+		return deployProjectViaDocker(networkVolumeId)
+	}
 	//parse project toml
 	config := loadProjectConfig()
 	projectId := config.GetPath([]string{"project", "uuid"}).(string)
