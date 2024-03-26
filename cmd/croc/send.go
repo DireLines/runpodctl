@@ -26,7 +26,7 @@ type Response struct {
 
 var code string
 
-var relayUrl = "https://raw.githubusercontent.com/runpod/runpodctl/main/cmd/croc/relays.json"
+var relayUrl = "https://raw.githubusercontent.com/DireLines/runpodctl/additionalSendRecvRelays/cmd/croc/relays.json"
 
 var SendCmd = &cobra.Command{
 	Use:   "send [filename(s) or folder]",
