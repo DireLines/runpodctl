@@ -4,7 +4,7 @@ local:
 	go build -ldflags "-X 'main.Version=1.0.0'" -o bin/runpodctl .
 
 linux:
-	env GOOS=linux GOARCH=amd64 go build -ldflags "-X 'main.Version=1.0.0'" -o bin/runpodctl .
+	env GOOS=linux GOARCH=amd64 go build -ldflags "-X 'main.Version=1.0.0'" -o bin/runpodctl-linux .
 mac:
 	env GOOS=darwin GOARCH=arm64 go build -ldflags "-X 'main.Version=1.0.0'" -o bin/runpodctl .
 windows:
