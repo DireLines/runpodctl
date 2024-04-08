@@ -518,7 +518,8 @@ func deployProjectViaDocker(networkVolumeId string) (endpointId string, err erro
 	projectConfig := config.Get("project").(*toml.Tree)
 	// generate dockerfile
 	buildProjectDockerfile()
-	// TODO: ask runpod to start build worker
+	// TODO: move docker build to runpod side - host will build image
+	// ask runpod to start build worker
 	// upload dockerfile to worker
 	// on worker
 	// retrieve dockerhub creds
@@ -528,17 +529,20 @@ func deployProjectViaDocker(networkVolumeId string) (endpointId string, err erro
 	tag := "1.0.0"
 	imageTag := fmt.Sprintf("%s/%s-%s:%s", dockerUsername, projectName, projectId, tag)
 	// docker build
-	buildCommand := fmt.Sprintf("docker build -t %s .", imageTag)
-	if err = exec.Command(buildCommand).Run(); err != nil {
+	buildCommand := strings.Split(fmt.Sprintf("build -t %s .", imageTag), " ")
+	if err = exec.Command("docker", buildCommand...).Run(); err != nil {
 		fmt.Println("error during docker build: ", err)
 		return "", err
 	}
+	fmt.Println("built docker image ", imageTag)
+
 	// upload to dockerhub
-	pushCommand := fmt.Sprintf("docker tag %s %s; docker push %s", imageTag, imageTag, imageTag)
-	if err = exec.Command(pushCommand).Run(); err != nil {
+	pushCommand := strings.Split(fmt.Sprintf("push %s", imageTag), " ")
+	if err = exec.Command("docker", pushCommand...).Run(); err != nil {
 		fmt.Println("error during docker push: ", err)
 		return "", err
 	}
+	fmt.Println("pushed docker image ", imageTag)
 	//deploy endpoint with new tag
 	env := mapToApiEnv(createEnvVars(config))
 	// deploy new template
