@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"strings"
@@ -514,23 +515,98 @@ func deployProjectViaDocker(networkVolumeId string) (endpointId string, err erro
 	config := loadProjectConfig()
 	projectId := config.GetPath([]string{"project", "uuid"}).(string)
 	projectName := config.Get("name").(string)
+	projectConfig := config.Get("project").(*toml.Tree)
 	// generate dockerfile
 	buildProjectDockerfile()
-	// start runpod cpu pod to perform docker build
-
+	// TODO: ask runpod to start build worker
 	// upload dockerfile to worker
-
 	// on worker
 	// retrieve dockerhub creds
 
-	// 	generate image tag
-	imageTag := fmt.Sprintf("%s:%s-%s/%s", dockerUsername, projectName, projectId, tag)
-	// 	docker build
-	// 	upload to dockerhub
-	// on cli
-	// 	await worker build
-	// 	deploy endpoint with new tag
-	//check for existing pod
+	// generate image tag
+	dockerUsername := "direlines"
+	tag := "1.0.0"
+	imageTag := fmt.Sprintf("%s/%s-%s:%s", dockerUsername, projectName, projectId, tag)
+	// docker build
+	buildCommand := fmt.Sprintf("docker build -t %s .", imageTag)
+	if err = exec.Command(buildCommand).Run(); err != nil {
+		fmt.Println("error during docker build: ", err)
+		return "", err
+	}
+	// upload to dockerhub
+	pushCommand := fmt.Sprintf("docker tag %s %s; docker push %s", imageTag, imageTag, imageTag)
+	if err = exec.Command(pushCommand).Run(); err != nil {
+		fmt.Println("error during docker push: ", err)
+		return "", err
+	}
+	//deploy endpoint with new tag
+	env := mapToApiEnv(createEnvVars(config))
+	// deploy new template
+	projectEndpointTemplateId, err := api.CreateTemplate(&api.CreateTemplateInput{
+		Name:              fmt.Sprintf("%s-endpoint-%s-%d", projectName, projectId, time.Now().UnixMilli()),
+		ImageName:         imageTag,
+		Env:               env,
+		IsServerless:      true,
+		ContainerDiskInGb: int(projectConfig.Get("container_disk_size_gb").(int64)),
+		VolumeMountPath:   projectConfig.Get("volume_mount_path").(string),
+		StartSSH:          true,
+		IsPublic:          false,
+		Readme:            "",
+	})
+	if err != nil {
+		fmt.Println("error making template")
+		return "", err
+	}
+	// deploy / update endpoint
+	deployedEndpointId, err := getProjectEndpoint(projectId)
+	// default endpoint settings
+	minWorkers := 0
+	maxWorkers := 3
+	flashboot := true
+	flashbootSuffix := " -fb"
+	idleTimeout := 5
+	endpointConfig, ok := config.Get("endpoint").(*toml.Tree)
+	if ok {
+		if min, ok := endpointConfig.Get("active_workers").(int64); ok {
+			minWorkers = int(min)
+		}
+		if max, ok := endpointConfig.Get("max_workers").(int64); ok {
+			maxWorkers = int(max)
+		}
+		if fb, ok := endpointConfig.Get("flashboot").(bool); ok {
+			flashboot = fb
+		}
+		if !flashboot {
+			flashbootSuffix = ""
+		}
+		if idle, ok := endpointConfig.Get("idle_timeout").(int64); ok {
+			idleTimeout = int(idle)
+		}
+	}
+	if err != nil {
+		endpointId, err = api.CreateEndpoint(&api.CreateEndpointInput{
+			Name:            fmt.Sprintf("%s-endpoint-%s%s", projectName, projectId, flashbootSuffix),
+			TemplateId:      projectEndpointTemplateId,
+			NetworkVolumeId: networkVolumeId,
+			GpuIds:          "AMPERE_16",
+			IdleTimeout:     idleTimeout,
+			ScalerType:      "QUEUE_DELAY",
+			ScalerValue:     4,
+			WorkersMin:      minWorkers,
+			WorkersMax:      maxWorkers,
+		})
+		if err != nil {
+			fmt.Println("error making endpoint")
+			return "", err
+		}
+	} else {
+		err = api.UpdateEndpointTemplate(deployedEndpointId, projectEndpointTemplateId)
+		if err != nil {
+			fmt.Println("error updating endpoint template")
+			return "", err
+		}
+	}
+	return endpointId, nil
 }
 
 func deployProject(networkVolumeId string) (endpointId string, err error) {
