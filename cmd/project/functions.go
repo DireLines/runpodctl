@@ -527,22 +527,26 @@ func deployProjectViaDocker(networkVolumeId string) (endpointId string, err erro
 	// generate image tag
 	dockerUsername := "direlines"
 	tag := "1.0.0"
-	imageTag := fmt.Sprintf("%s/%s-%s:%s", dockerUsername, projectName, projectId, tag)
+	imageTag := fmt.Sprintf("%s/runpod-sls-worker-%s-%s:%s", dockerUsername, projectName, projectId, tag)
 	// docker build
-	buildCommand := strings.Split(fmt.Sprintf("build -t %s .", imageTag), " ")
-	if err = exec.Command("docker", buildCommand...).Run(); err != nil {
+	buildCommand := exec.Command("docker", strings.Split(fmt.Sprintf("build -t %s . --no-cache", imageTag), " ")...)
+	buildCommand.Stdout = os.Stdout
+	buildCommand.Stderr = os.Stderr
+	if err = buildCommand.Run(); err != nil {
 		fmt.Println("error during docker build: ", err)
 		return "", err
 	}
-	fmt.Println("built docker image ", imageTag)
+	fmt.Println("built docker image", imageTag)
 
 	// upload to dockerhub
-	pushCommand := strings.Split(fmt.Sprintf("push %s", imageTag), " ")
-	if err = exec.Command("docker", pushCommand...).Run(); err != nil {
+	pushCommand := exec.Command("docker", strings.Split(fmt.Sprintf("push %s", imageTag), " ")...)
+	pushCommand.Stdout = os.Stdout
+	pushCommand.Stderr = os.Stderr
+	if err = pushCommand.Run(); err != nil {
 		fmt.Println("error during docker push: ", err)
 		return "", err
 	}
-	fmt.Println("pushed docker image ", imageTag)
+	fmt.Println("pushed docker image", imageTag)
 	//deploy endpoint with new tag
 	env := mapToApiEnv(createEnvVars(config))
 	// deploy new template
@@ -562,7 +566,7 @@ func deployProjectViaDocker(networkVolumeId string) (endpointId string, err erro
 		return "", err
 	}
 	// deploy / update endpoint
-	deployedEndpointId, err := getProjectEndpoint(projectId)
+	endpointId, err = getProjectEndpoint(projectId)
 	// default endpoint settings
 	minWorkers := 0
 	maxWorkers := 3
@@ -604,7 +608,7 @@ func deployProjectViaDocker(networkVolumeId string) (endpointId string, err erro
 			return "", err
 		}
 	} else {
-		err = api.UpdateEndpointTemplate(deployedEndpointId, projectEndpointTemplateId)
+		err = api.UpdateEndpointTemplate(endpointId, projectEndpointTemplateId)
 		if err != nil {
 			fmt.Println("error updating endpoint template")
 			return "", err
