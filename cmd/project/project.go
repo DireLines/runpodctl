@@ -2,12 +2,13 @@ package project
 
 import (
 	"bufio"
-	"cli/api"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/runpod/runpodctl/api"
 
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
@@ -110,7 +111,7 @@ func selectNetworkVolume() (networkVolumeId string, err error) {
 	}
 	i, _, err := getNetworkVolume.Run()
 	if err != nil {
-		//ctrl c for example
+		// ctrl c for example
 		return "", err
 	}
 	networkVolumeId = options[i].Value
@@ -137,7 +138,7 @@ func selectStarterTemplate() (template string, err error) {
 	options := []StarterTemplateOption{}
 	for _, template := range templates {
 		// For the printed name, replace _ with spaces
-		var name = template.Name()
+		name := template.Name()
 		name = strings.Replace(name, "_", " ", -1)
 		options = append(options, StarterTemplateOption{Name: name, Value: template.Name()})
 	}
@@ -148,7 +149,7 @@ func selectStarterTemplate() (template string, err error) {
 	}
 	i, _, err := getStarterTemplate.Run()
 	if err != nil {
-		//ctrl c for example
+		// ctrl c for example
 		return "", err
 	}
 	template = options[i].Value

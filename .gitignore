@@ -16,3 +16,5 @@ bin/
 main
 .vscode/
 vendor/
+
+**.DS_STORE
